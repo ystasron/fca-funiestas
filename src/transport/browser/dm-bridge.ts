@@ -414,7 +414,7 @@ export function createDmBridge(options: DmBridgeOptions): DmBridgeImpl {
       // sender in that conversation is allowed; partners are only used to
       // identify the thread and provide a fallback ID for display.
       if (who?.isSelf || parsed.sender === selfLabel) return;
-      const senderID = who?.userID || options.partners[0]?.userID || "0";
+      const senderID = who?.userID || options.partners[0]?.userID || threadKey || "0";
       const bodyKey = `${senderID}\u0000${parsed.body}`;
       const previousBody = handledBodies.get(bodyKey);
       if (previousBody && Date.now() - previousBody < 3000) return;

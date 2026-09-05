@@ -27854,7 +27854,7 @@ function createDmBridge(options) {
       if (!parsed) return;
       const who = resolveSender(parsed.sender);
       if (who?.isSelf || parsed.sender === selfLabel) return;
-      const senderID = who?.userID || options.partners[0]?.userID || "0";
+      const senderID = who?.userID || options.partners[0]?.userID || threadKey || "0";
       const bodyKey = `${senderID}\0${parsed.body}`;
       const previousBody = handledBodies.get(bodyKey);
       if (previousBody && Date.now() - previousBody < 3e3) return;
