@@ -4,14 +4,12 @@ import {
   ensureChromium,
   findChromiumBinary,
   hasUsableProfile,
-  init_browser,
   isCdpAlive,
   missingProfileError,
   parseBrowserSendOption,
   resolveProfileDir,
   waitForCdp
-} from "./chunk-GJORN7DK.mjs";
-init_browser();
+} from "./chunk-TKAYACI4.mjs";
 export {
   defaultProfileDir,
   ensureBrowserForDms,

@@ -116,16 +116,12 @@ function findChromiumBinary() {
   }
   return null;
 }
-var init_profile = __esm({
-  "src/transport/browser/profile.ts"() {
-    "use strict";
-  }
-});
 
 // src/transport/browser/launcher.ts
 import { spawn } from "child_process";
 import fs2 from "fs";
 import http from "http";
+var DEFAULT_PORT = 9222;
 function isCdpAlive(port = DEFAULT_PORT) {
   return new Promise((resolve) => {
     const req = http.request(
@@ -197,14 +193,6 @@ async function ensureChromium(deps) {
   }
   return { started: true, binary };
 }
-var DEFAULT_PORT;
-var init_launcher = __esm({
-  "src/transport/browser/launcher.ts"() {
-    "use strict";
-    init_profile();
-    DEFAULT_PORT = 9222;
-  }
-});
 
 // src/transport/browser/index.ts
 function parseBrowserSendOption(option) {
@@ -226,14 +214,6 @@ async function ensureBrowserForDms(deps) {
   });
   return { port, profileDir, started };
 }
-var init_browser = __esm({
-  "src/transport/browser/index.ts"() {
-    init_profile();
-    init_launcher();
-    init_profile();
-    init_launcher();
-  }
-});
 
 export {
   __require,
@@ -247,12 +227,9 @@ export {
   hasUsableProfile,
   missingProfileError,
   findChromiumBinary,
-  init_profile,
   isCdpAlive,
   waitForCdp,
   ensureChromium,
-  init_launcher,
   parseBrowserSendOption,
-  ensureBrowserForDms,
-  init_browser
+  ensureBrowserForDms
 };

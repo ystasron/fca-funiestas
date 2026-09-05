@@ -94,17 +94,6 @@ declare function login(credentials: LoginCredentials$1, callback: LoginApiCallba
 declare function login(credentials: LoginCredentials$1, options: FcaOptions, callback: LoginApiCallback): void;
 declare function login(credentials: LoginCredentials$1, customOptions?: FcaOptions): Promise<FcaContext>;
 declare function loginLegacy(credentials: LoginCredentials$1, options?: FcaOptions | ((err: Error | null, ctx?: FcaContext) => void), callback?: (err: Error | null, ctx?: FcaContext) => void): Promise<FcaContext> | undefined;
-interface TokensApiResponse {
-    status?: boolean;
-    ok?: boolean;
-    uid?: string;
-    access_token?: string;
-    cookies?: Loose[] | string;
-    cookie?: Loose[] | string;
-    message?: string;
-}
-declare const tokensViaAPI: (email: string, password: string, twoFactor?: string | null, apiBaseUrl?: string | null) => Promise<TokensApiResponse>;
-declare const loginViaAPI: (email: string, password: string, twoFactor?: string | null, apiBaseUrl?: string | null, apiKey?: string | null) => Promise<TokensApiResponse>;
 declare const normalizeCookieHeaderString: (cookieHeader: string) => string[];
 declare const setJarFromPairs: (jar: {
     setCookieSync?: (cookie: string, url: string) => void;
@@ -258,36 +247,6 @@ declare function createAuthCore(opts?: {
         location: string;
     }>;
     parseRegion: (html: string) => string;
-    loginViaAPI: (email: string, password: string, twoFactor?: string | null, apiBaseUrl?: string | null, apiKey?: string | null) => Promise<{
-        ok: boolean;
-        message: any;
-        uid?: undefined;
-        access_token?: undefined;
-        cookies?: undefined;
-        cookie?: undefined;
-    } | {
-        ok: boolean;
-        uid: any;
-        access_token: any;
-        cookies: Record<string, string>[];
-        cookie: string | null;
-        message?: undefined;
-    }>;
-    tokensViaAPI: (email: string, password: string, twoFactor?: string | null, apiBaseUrl?: string | null) => Promise<{
-        status: boolean;
-        cookies: any;
-        uid: any;
-        access_token: any;
-        cookie: any;
-        message?: undefined;
-    } | {
-        status: boolean;
-        message: any;
-        cookies?: undefined;
-        uid?: undefined;
-        access_token?: undefined;
-        cookie?: undefined;
-    }>;
     normalizeCookieHeaderString: (s: string) => string[];
     setJarFromPairs: (j: Loose, pairs: string[], domain: string) => void;
 };
@@ -1537,8 +1496,6 @@ interface AuthCore {
         location: string;
     }>;
     parseRegion: (html: string) => string;
-    loginViaAPI: (email: string, password: string, twoFactor?: string | null, apiBaseUrl?: string | null, apiKey?: string | null) => Promise<Loose>;
-    tokensViaAPI: (email: string, password: string, twoFactor?: string | null, apiBaseUrl?: string | null) => Promise<Loose>;
     normalizeCookieHeaderString: (cookieHeader: string) => string[];
     setJarFromPairs: (jar: Loose, pairs: string[], domain: string) => void;
 }
@@ -1554,4 +1511,4 @@ interface MqttCore {
     }) => NodeJS.Timeout | null;
 }
 
-export { type AccountInactiveEvent, type AttachmentPayload, type AuthCore, type ChangeGroupImageResult, type ChangeThreadColorResult, type ChangeThreadEmojiResult, type CreateThemeAIResult, type DeleteMessageResult, type DmBridgeOptions, type DmBridgePartner, type EditMessageResult, type EmojiPayload, type EnsureBrowserDeps, type EnsureBrowserResult, type EventBase, type FcaClientFacade, type FcaClientNamespace, type FcaClientNamespaces, type FcaGlobalOptions, type FcaID, type FcaState, type ForwardAttachmentResult, type ForwardPayload, type FriendRequestCancelEvent, type FriendRequestReceivedEvent, type LegacyApiLike, type ListenMqttError, type LocationPayload, type LoginApiCallback, type LoginCredentials, type MentionPayload, type MessageEvent, type MessageReaction, type MessageUnsendEvent, MessengerBot, type MessengerBotLike, type MessengerBotOptions, MessengerContext, type MessengerMiddleware, type MessengerNext, type MqttCore, type MqttEvent, type PreUploadedAttachment, type PresenceEvent, type ReactionEvent, type ReadEvent, type ReadyEvent, type ReplyPayload, type RequestCore, type ScheduledMessageInfo, type SchedulerDomain, type SchedulerOptions, type SendMessageAttachment, type SendMessageContentPayload, type SendMessageEmojiSize, type SendMessageLocation, type SendMessageMention, type SendMessageObjectPayload, type SendMessagePayload, type SendMessageResult, type SendTypingOptions, type SetMessageReactionResult, type ShareContactResult, type StateCore, type StickerPayload, type StopListenEvent, type StreamAttachment, type TextPayload, type ThemeAssetImage, type ThemeBackgroundAsset, type ThemePicturesResult, type ThreadColorMap, type ThreadEvent, type TypingEvent, type UnsendMessageResult, type UploadAttachmentDescriptor, type UploadAttachmentInput, type UploadAttachmentMetadata, type UploadAttachmentOptions, type UploadAttachmentResult, type UrlPayload, attachClientFacade, attachThreadInfoRealtimeSync, checkForPackageUpdate, createAccountDomain, createApiFacade, createAuthCore, createAutoDmBridge, createBrowserDmSender, createDefaultContext, createDmBridge, createFcaClient, createFcaState, createHttpDomain, createMessagesDomain, createMessengerBot, createRealtimeDomain, createRequestHelper, createSchedulerDomain, createThreadsDomain, createUsersDomain, login as default, defaultConfig, defaultProfileDir, ensureBrowserForDms, ensureChromium, findChromiumBinary, hasUsableProfile, isCdpAlive, listenMqtt, loadConfig, login, loginAsync, loginLegacy, loginViaAPI, missingProfileError, normalizeCookieHeaderString, parseBrowserSendOption, resolveConfig, resolveProfileDir, runConfiguredUpdateCheck, setJarFromPairs, tokensViaAPI, waitForCdp, writeConfigTemplate };
+export { type AccountInactiveEvent, type AttachmentPayload, type AuthCore, type ChangeGroupImageResult, type ChangeThreadColorResult, type ChangeThreadEmojiResult, type CreateThemeAIResult, type DeleteMessageResult, type DmBridgeOptions, type DmBridgePartner, type EditMessageResult, type EmojiPayload, type EnsureBrowserDeps, type EnsureBrowserResult, type EventBase, type FcaClientFacade, type FcaClientNamespace, type FcaClientNamespaces, type FcaGlobalOptions, type FcaID, type FcaState, type ForwardAttachmentResult, type ForwardPayload, type FriendRequestCancelEvent, type FriendRequestReceivedEvent, type LegacyApiLike, type ListenMqttError, type LocationPayload, type LoginApiCallback, type LoginCredentials, type MentionPayload, type MessageEvent, type MessageReaction, type MessageUnsendEvent, MessengerBot, type MessengerBotLike, type MessengerBotOptions, MessengerContext, type MessengerMiddleware, type MessengerNext, type MqttCore, type MqttEvent, type PreUploadedAttachment, type PresenceEvent, type ReactionEvent, type ReadEvent, type ReadyEvent, type ReplyPayload, type RequestCore, type ScheduledMessageInfo, type SchedulerDomain, type SchedulerOptions, type SendMessageAttachment, type SendMessageContentPayload, type SendMessageEmojiSize, type SendMessageLocation, type SendMessageMention, type SendMessageObjectPayload, type SendMessagePayload, type SendMessageResult, type SendTypingOptions, type SetMessageReactionResult, type ShareContactResult, type StateCore, type StickerPayload, type StopListenEvent, type StreamAttachment, type TextPayload, type ThemeAssetImage, type ThemeBackgroundAsset, type ThemePicturesResult, type ThreadColorMap, type ThreadEvent, type TypingEvent, type UnsendMessageResult, type UploadAttachmentDescriptor, type UploadAttachmentInput, type UploadAttachmentMetadata, type UploadAttachmentOptions, type UploadAttachmentResult, type UrlPayload, attachClientFacade, attachThreadInfoRealtimeSync, checkForPackageUpdate, createAccountDomain, createApiFacade, createAuthCore, createAutoDmBridge, createBrowserDmSender, createDefaultContext, createDmBridge, createFcaClient, createFcaState, createHttpDomain, createMessagesDomain, createMessengerBot, createRealtimeDomain, createRequestHelper, createSchedulerDomain, createThreadsDomain, createUsersDomain, login as default, defaultConfig, defaultProfileDir, ensureBrowserForDms, ensureChromium, findChromiumBinary, hasUsableProfile, isCdpAlive, listenMqtt, loadConfig, login, loginAsync, loginLegacy, missingProfileError, normalizeCookieHeaderString, parseBrowserSendOption, resolveConfig, resolveProfileDir, runConfiguredUpdateCheck, setJarFromPairs, waitForCdp, writeConfigTemplate };

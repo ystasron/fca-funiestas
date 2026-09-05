@@ -13,19 +13,6 @@ export interface RequestCore {
 export interface AuthCore {
   REGION_MAP: Map<string, { code: string; name: string; location: string }>;
   parseRegion: (html: string) => string;
-  loginViaAPI: (
-    email: string,
-    password: string,
-    twoFactor?: string | null,
-    apiBaseUrl?: string | null,
-    apiKey?: string | null
-  ) => Promise<Loose>;
-  tokensViaAPI: (
-    email: string,
-    password: string,
-    twoFactor?: string | null,
-    apiBaseUrl?: string | null
-  ) => Promise<Loose>;
   normalizeCookieHeaderString: (cookieHeader: string) => string[];
   setJarFromPairs: (jar: Loose, pairs: string[], domain: string) => void;
 }

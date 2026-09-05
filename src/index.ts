@@ -2,8 +2,6 @@ export {
   login,
   loginAsync,
   loginLegacy,
-  loginViaAPI,
-  tokensViaAPI,
   normalizeCookieHeaderString,
   setJarFromPairs,
   type LoginApiCallback

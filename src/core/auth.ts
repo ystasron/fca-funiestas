@@ -249,31 +249,6 @@ export function loginLegacy(
   return p;
 }
 
-export interface TokensApiResponse {
-  status?: boolean;
-  ok?: boolean;
-  uid?: string;
-  access_token?: string;
-  cookies?: Loose[] | string;
-  cookie?: Loose[] | string;
-  message?: string;
-}
-
-export const tokensViaAPI = (
-  email: string,
-  password: string,
-  twoFactor?: string | null,
-  apiBaseUrl?: string | null
-): Promise<TokensApiResponse> => loginHelper.tokensViaAPI(email, password, twoFactor, apiBaseUrl);
-
-export const loginViaAPI = (
-  email: string,
-  password: string,
-  twoFactor?: string | null,
-  apiBaseUrl?: string | null,
-  apiKey?: string | null
-): Promise<TokensApiResponse> => loginHelper.loginViaAPI(email, password, twoFactor, apiBaseUrl, apiKey);
-
 export const normalizeCookieHeaderString = (cookieHeader: string) =>
   loginHelper.normalizeCookieHeaderString(cookieHeader);
 

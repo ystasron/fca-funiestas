@@ -1,7 +1,6 @@
 "use strict";
 
 import EventEmitter from "node:events";
-import axios from "axios";
 import { attachLegacyApiSurface } from "../app/attach-legacy-api";
 import { attachClientFacade } from "../compat/api-registry";
 import models from "../database/models";
@@ -25,50 +24,13 @@ function errMsg(e: unknown): string {
 const g = globalThis as Loose;
 
 const { config } = loadConfig();
-const axiosBase = axios;
 const requestCore = createRequestCore();
 const { get, post, jar, makeDefaults } = requestCore;
-const authCore = createAuthCore({ config, logger, axiosBase });
+const authCore = createAuthCore({});
 const REGION_MAP = authCore.REGION_MAP;
 
 function parseRegion(html: string) {
   return authCore.parseRegion(html);
-}
-
-/**
- * Login via external API endpoint (iOS method)
- * @param {string} email - Email hoặc số điện thoại
- * @param {string} password - Mật khẩu
- * @param {string|null} twoFactor - Secret Base32 cho 2FA (không phải mã 6 số)
- * @param {string|null} apiBaseUrl - Base URL của API server (mặc định: https://minhdong.site)
- * @param {string|null} apiKey - API key để xác thực (x-api-key header)
- * @returns {Promise<{ok: boolean, uid?: string, access_token?: string, cookies?: Array, cookie?: string, message?: string}>}
- */
-async function loginViaAPI(
-  email: string,
-  password: string,
-  twoFactor: string | null = null,
-  apiBaseUrl: string | null = null,
-  apiKey: string | null = null
-) {
-  return authCore.loginViaAPI(email, password, twoFactor, apiBaseUrl, apiKey);
-}
-
-/**
- * High-level login function that uses the API endpoint
- * @param {string} email - Email hoặc số điện thoại  
- * @param {string} password - Mật khẩu
- * @param {string|null} twoFactor - Secret Base32 cho 2FA (không phải mã 6 số)
- * @param {string|null} apiBaseUrl - Base URL của API server
- * @returns {Promise<{status: boolean, cookies?: Array, uid?: string, access_token?: string, message?: string}>}
- */
-async function tokensViaAPI(
-  email: string,
-  password: string,
-  twoFactor: string | null | undefined = null,
-  apiBaseUrl: string | null | undefined = null
-) {
-  return authCore.tokensViaAPI(email, password, twoFactor ?? null, apiBaseUrl ?? null);
 }
 
 function normalizeCookieHeaderString(s: string) {
@@ -285,11 +247,6 @@ async function setJarCookies(j: Loose, appstate: Loose[]) {
   await Promise.all(tasks);
 }
 
-// tokens function - alias to tokensViaAPI for backward compatibility
-async function tokens(username: string, password: string, twofactor: string | null | undefined = null) {
-  return tokensViaAPI(username, password, twofactor);
-}
-
 async function hydrateJarFromDB(userID: Loose) {
   try {
     let ck = null;
@@ -323,248 +280,6 @@ async function hydrateJarFromDB(userID: Loose) {
   } catch {
     return false;
   }
-}
-
-async function tryAutoLoginIfNeeded(
-  currentHtml: Loose,
-  currentCookies: Loose,
-  globalOptions: Loose,
-  ctxRef: Loose,
-  hadAppStateInput = false
-) {
-  // Helper to validate UID - must be a non-zero positive number string
-  const isValidUID = (uid: Loose) =>
-    Boolean(uid && uid !== "0" && /^\d+$/.test(String(uid)) && parseInt(String(uid), 10) > 0);
-
-  const getUID = (cs: Loose[]) =>
-    cs.find((c: Loose) => c.key === "i_user")?.value ||
-    cs.find((c: Loose) => c.key === "c_user")?.value ||
-    cs.find((c: Loose) => c.name === "i_user")?.value ||
-    cs.find((c: Loose) => c.name === "c_user")?.value;
-  const htmlUID = (body: Loose) => {
-    const s = typeof body === "string" ? body : String(body ?? "");
-    return s.match(/"USER_ID"\s*:\s*"(\d+)"/)?.[1] || s.match(/\["CurrentUserInitialData",\[\],\{.*?"USER_ID":"(\d+)".*?\},\d+\]/)?.[1];
-  };
-
-  let userID = getUID(currentCookies as Loose[]);
-  // Also try to extract userID from HTML if cookie userID is invalid
-  if (!isValidUID(userID)) {
-    userID = htmlUID(currentHtml);
-  }
-  // If we have a valid userID, return success
-  if (isValidUID(userID)) {
-    return { html: currentHtml, cookies: currentCookies, userID };
-  }
-
-  // No valid userID found - need to try auto-login
-  logger("tryAutoLoginIfNeeded: No valid userID found, attempting recovery...", "warn");
-
-  // If appState/Cookie was provided and is not checkpointed, try refresh
-  if (hadAppStateInput) {
-    const isCheckpoint = currentHtml.includes("/checkpoint/block/?next");
-    if (!isCheckpoint) {
-      try {
-        const refreshedCookies = await Promise.resolve(jar.getCookies("https://www.facebook.com"));
-        userID = getUID(refreshedCookies);
-        if (isValidUID(userID)) {
-          return { html: currentHtml, cookies: refreshedCookies, userID };
-        }
-      } catch { }
-    }
-  }
-
-  // Try to hydrate from DB backup
-  const hydrated = await hydrateJarFromDB(null);
-  if (hydrated) {
-    logger("tryAutoLoginIfNeeded: Trying backup from DB...", "info");
-    try {
-      const initial = await get("https://www.facebook.com/", jar, null, globalOptions).then(saveCookies(jar));
-      const resB = (await ctxRef.bypassAutomation(initial, jar)) || initial;
-      const htmlB = resB && resB.data ? resB.data : "";
-      if (!htmlB.includes("/checkpoint/block/?next")) {
-        const htmlUserID = htmlUID(htmlB);
-        if (isValidUID(htmlUserID)) {
-          const cookiesB = await Promise.resolve(jar.getCookies("https://www.facebook.com"));
-          logger(`tryAutoLoginIfNeeded: DB backup session valid, USER_ID=${htmlUserID}`, "info");
-          return { html: htmlB, cookies: cookiesB, userID: htmlUserID };
-        } else {
-          logger(`tryAutoLoginIfNeeded: DB backup session dead (HTML USER_ID=${htmlUserID || "empty"}), will try API login...`, "warn");
-        }
-      }
-    } catch (dbErr: unknown) {
-      logger(`tryAutoLoginIfNeeded: DB backup failed - ${errMsg(dbErr)}`, "warn");
-    }
-  }
-
-  // Check if auto-login is enabled (support both true and "true")
-  if (config.autoLogin === false || String(config.autoLogin) === "false") {
-    throw new Error("AppState expired — Auto-login is disabled");
-  }
-
-  // Try API login
-  const u = config.credentials?.email || config.email;
-  const p = config.credentials?.password || config.password;
-  const tf = config.credentials?.twofactor || config.twofactor || null;
-
-  if (!u || !p) {
-    logger("tryAutoLoginIfNeeded: No credentials configured for auto-login!", "error");
-    throw new Error("Missing credentials for auto-login (email/password not configured in fca-config.json)");
-  }
-
-  logger(`tryAutoLoginIfNeeded: Attempting API login for ${u.slice(0, 3)}***...`, "info");
-
-  const r = await tokens(u, p, tf);
-  if (!r || !r.status) {
-    throw new Error(r && r.message ? r.message : "API Login failed");
-  }
-
-  logger(`tryAutoLoginIfNeeded: API login successful! UID: ${r.uid}`, "info");
-
-  // Handle cookies - can be array, cookie string header, or both
-  let cookiePairs: string[] = [];
-
-  // If cookies is a string (cookie header format), parse it
-  if (typeof r.cookies === "string") {
-    cookiePairs = normalizeCookieHeaderString(r.cookies);
-  }
-  // If cookies is an array, convert to pairs
-  else if (Array.isArray(r.cookies)) {
-    cookiePairs = (r.cookies as Loose[])
-      .map((c: Loose) => {
-        if (typeof c === "string") {
-          return c;
-        }
-        if (c && typeof c === "object") {
-          return `${(c as Loose).key || (c as Loose).name}=${(c as Loose).value}`;
-        }
-        return null;
-      })
-      .filter((x): x is string => x != null);
-  }
-
-  // Also check for cookie field (alternative field name)
-  if (cookiePairs.length === 0 && r.cookie) {
-    if (typeof r.cookie === "string") {
-      cookiePairs = normalizeCookieHeaderString(r.cookie);
-    } else if (Array.isArray(r.cookie)) {
-      cookiePairs = (r.cookie as Loose[])
-        .map((c: Loose) => {
-          if (typeof c === "string") return c;
-          if (c && typeof c === "object") return `${(c as Loose).key || (c as Loose).name}=${(c as Loose).value}`;
-          return null;
-        })
-        .filter((x): x is string => x != null);
-    }
-  }
-
-  if (cookiePairs.length === 0) {
-    logger("tryAutoLoginIfNeeded: No cookies found in API response", "warn");
-    throw new Error("API login returned no cookies");
-  } else {
-    logger(`tryAutoLoginIfNeeded: Parsed ${cookiePairs.length} cookies from API response`, "info");
-    setJarFromPairs(jar, cookiePairs, ".facebook.com");
-  }
-
-  // Wait a bit for cookies to be set
-  await new Promise(resolve => setTimeout(resolve, 500));
-
-  // Refresh Facebook page with new cookies - try multiple times if needed
-  // Try both www.facebook.com and m.facebook.com to ensure session is established
-  let html2 = "";
-  let res2 = null;
-  let retryCount = 0;
-  const maxRetries = 3;
-  const urlsToTry = ["https://m.facebook.com/", "https://www.facebook.com/"];
-
-  while (retryCount < maxRetries) {
-    try {
-      // Try m.facebook.com first (mobile version often works better for API login)
-      const urlToUse = retryCount === 0 ? urlsToTry[0] : urlsToTry[retryCount % urlsToTry.length];
-      logger(`tryAutoLoginIfNeeded: Refreshing ${urlToUse} (attempt ${retryCount + 1}/${maxRetries})...`, "info");
-      
-      const initial2 = await get(urlToUse, jar, null, globalOptions).then(saveCookies(jar));
-      res2 = (await ctxRef.bypassAutomation(initial2, jar)) || initial2;
-      html2 = res2 && res2.data ? res2.data : "";
-
-      if (html2.includes("/checkpoint/block/?next")) {
-        throw new Error("Checkpoint after API login");
-      }
-
-      // Check if HTML contains valid USER_ID
-      const htmlUserID = htmlUID(html2);
-      if (isValidUID(htmlUserID)) {
-        logger(`tryAutoLoginIfNeeded: Found valid USER_ID in HTML from ${urlToUse}: ${htmlUserID}`, "info");
-        break;
-      }
-
-      // If no valid USER_ID found, wait and retry with different URL
-      if (retryCount < maxRetries - 1) {
-        logger(`tryAutoLoginIfNeeded: No valid USER_ID in HTML from ${urlToUse} (attempt ${retryCount + 1}/${maxRetries}), retrying...`, "warn");
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        retryCount++;
-      } else {
-        logger("tryAutoLoginIfNeeded: No valid USER_ID found in HTML after retries", "warn");
-        break;
-      }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes("Checkpoint")) {
-        throw err;
-      }
-      if (retryCount < maxRetries - 1) {
-        logger(`tryAutoLoginIfNeeded: Error refreshing page (attempt ${retryCount + 1}/${maxRetries}): ${errMsg(err)}`, "warn");
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        retryCount++;
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  const cookies2 = await Promise.resolve(jar.getCookies("https://www.facebook.com"));
-  const uid2 = getUID(cookies2);
-  const htmlUserID2 = htmlUID(html2);
-
-  // Prioritize USER_ID from HTML over cookies (more reliable)
-  let finalUID = null;
-  if (isValidUID(htmlUserID2)) {
-    finalUID = htmlUserID2;
-    logger(`tryAutoLoginIfNeeded: Using USER_ID from HTML: ${finalUID}`, "info");
-  } else if (isValidUID(uid2)) {
-    finalUID = uid2;
-    logger(`tryAutoLoginIfNeeded: Using USER_ID from cookies: ${finalUID}`, "info");
-  } else if (isValidUID(r.uid)) {
-    finalUID = r.uid;
-    logger(`tryAutoLoginIfNeeded: Using USER_ID from API response: ${finalUID}`, "info");
-  }
-
-  if (!isValidUID(finalUID)) {
-    logger(`tryAutoLoginIfNeeded: HTML check - USER_ID from HTML: ${htmlUserID2 || "none"}, from cookies: ${uid2 || "none"}, from API: ${r.uid || "none"}`, "error");
-    throw new Error("Login failed - could not get valid userID after API login. HTML may indicate session is not established.");
-  }
-
-  // Final validation: ensure HTML shows we're logged in
-  if (!isValidUID(htmlUserID2)) {
-    logger("tryAutoLoginIfNeeded: WARNING - HTML does not show valid USER_ID, but proceeding with cookie-based UID", "warn");
-  }
-
-  return { html: html2, cookies: cookies2, userID: finalUID };
-}
-
-function makeLogin(j: Loose, email: Loose, password: Loose, globalOptions: Loose) {
-  return async function () {
-    const u = email || config.credentials?.email;
-    const p = password || config.credentials?.password;
-    const tf = config.credentials?.twofactor || null;
-    if (!u || !p) return;
-    const r = await tokens(u, p, tf);
-    if (r && r.status && Array.isArray(r.cookies)) {
-      const pairs = (r.cookies as Loose[]).map((c: Loose) => `${c.key || c.name}=${c.value}`);
-      setJarFromPairs(j, pairs, ".facebook.com");
-      await get("https://www.facebook.com/", j, null, globalOptions).then(saveCookies(j));
-    } else {
-      throw new Error(r && r.message ? r.message : "Login failed");
-    }
-  };
 }
 
 function loginHelper(
@@ -729,13 +444,8 @@ function loginHelper(
         const initial = await get("https://www.facebook.com/", jar, null, globalOptions).then(saveCookies(jar));
         return (await ctx.bypassAutomation(initial, jar)) || initial;
       }
-      logger("AppState expired — proceeding to email/password login", "warn");
-      return get("https://www.facebook.com/", null, null, globalOptions)
-        .then(saveCookies(jar))
-        .then(makeLogin(jar, email, password, globalOptions))
-        .then(function () {
-          return get("https://www.facebook.com/", jar, null, globalOptions).then(saveCookies(jar));
-        });
+      logger("AppState expired — no valid session found. Provide appState or Cookie to login.", "error");
+      throw new Error("AppState expired — no valid session found. Provide appState or Cookie to login.");
     })()
       .then(async function (res: Loose) {
         const ctx = {} as Loose;
@@ -818,39 +528,9 @@ function loginHelper(
         if (!isValidUID(userID) && userIDFromAppState && isValidUID(userIDFromAppState)) {
           userID = userIDFromAppState;
         }
-        // Trigger auto-login if userID is invalid (missing or "0")
+        // Trigger error if userID is invalid (missing or "0")
         if (!isValidUID(userID)) {
-          logger("Invalid userID detected (missing or 0), attempting auto-login...", "warn");
-          // Pass hadAppStateInput=true if appState/Cookie was originally provided
-          const retried = await tryAutoLoginIfNeeded(html, cookies, globalOptions, ctx, !!(appState || Cookie));
-          html = retried.html;
-          cookies = retried.cookies;
-          userID = retried.userID;
-          
-          // Validate HTML after auto-login - ensure it contains valid USER_ID
-          const htmlUserIDAfterLogin = getUIDFromHTML(html);
-          if (!isValidUID(htmlUserIDAfterLogin)) {
-            logger("After auto-login, HTML still does not contain valid USER_ID. Session may not be established.", "error");
-            // Try one more refresh
-            try {
-              const refreshRes = await get("https://www.facebook.com/", jar, null, globalOptions).then(saveCookies(jar));
-              const refreshedHtml = refreshRes && refreshRes.data ? refreshRes.data : "";
-              const refreshedHtmlUID = getUIDFromHTML(refreshedHtml);
-              if (isValidUID(refreshedHtmlUID)) {
-                html = refreshedHtml;
-                userID = refreshedHtmlUID;
-                logger(`After refresh, found valid USER_ID in HTML: ${userID}`, "info");
-              } else {
-                throw new Error("Login failed - HTML does not show valid USER_ID after auto-login and refresh");
-              }
-            } catch (refreshErr) {
-              throw new Error(`Login failed - Could not establish valid session. HTML USER_ID check failed: ${errMsg(refreshErr)}`);
-            }
-          } else {
-            // Use USER_ID from HTML as it's more reliable
-            userID = htmlUserIDAfterLogin;
-            logger(`After auto-login, using USER_ID from HTML: ${userID}`, "info");
-          }
+          throw new Error("Login failed - no valid userID found. AppState may be expired. Provide a valid appState or Cookie.");
         }
         if (html.includes("/checkpoint/block/?next")) {
           logger("Appstate die, vui lòng thay cái mới!", "error");
@@ -939,16 +619,8 @@ function loginHelper(
 
             // Check if Facebook response shows USER_ID = 0 (session dead)
             if (!isValidUID(info.USER_ID)) {
-              logger("Facebook response shows invalid USER_ID (0 or empty), session is dead!", "warn");
-              // Force trigger auto-login
-              const retried = await tryAutoLoginIfNeeded(html, cookies, globalOptions, ctx, !!(appState || Cookie));
-              html = retried.html;
-              cookies = retried.cookies;
-              userID = retried.userID;
-              // Re-check after auto-login
-              if (!isValidUID(userID)) {
-                throw new Error("Auto-login failed - could not get valid userID");
-              }
+              logger("Facebook response shows invalid USER_ID (0 or empty), session is dead!", "error");
+              throw new Error("Login failed - Facebook response shows invalid USER_ID. AppState may be expired.");
             }
           } else if (userID) {
             logger(`ACCOUNT: ${userID}`, "info");
@@ -999,22 +671,6 @@ function loginHelper(
           emitter,
           bypassAutomation: ctx.bypassAutomation
         });
-        ctxMain.performAutoLogin = async () => {
-          try {
-            const u = config.credentials?.email || email;
-            const p = config.credentials?.password || password;
-            const tf = config.credentials?.twofactor || null;
-            if (!u || !p) return false;
-            const r = await tokens(u, p, tf);
-            if (!(r && r.status && Array.isArray(r.cookies))) return false;
-            const pairs = (r.cookies as Loose[]).map((c: Loose) => `${c.key || c.name}=${c.value}`);
-            setJarFromPairs(jar, pairs, ".facebook.com");
-            await get("https://www.facebook.com/", jar, null, globalOptions).then(saveCookies(jar));
-            return true;
-          } catch {
-            return false;
-          }
-        };
         const api = createApiFacade({
           globalOptions,
           jar,
@@ -1077,9 +733,6 @@ function loginHelper(
 
 const exported = Object.assign(loginHelper, {
   loginHelper,
-  tokensViaAPI,
-  loginViaAPI,
-  tokens,
   normalizeCookieHeaderString,
   setJarFromPairs
 });

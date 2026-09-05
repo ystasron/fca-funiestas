@@ -1,22 +1,6 @@
 import type { FcaOptions } from "./state";
 import legacyImpl from "./login-helper.impl";
 
-interface ApiCookie {
-  key?: string;
-  name?: string;
-  value: string;
-}
-
-interface TokensApiResponse {
-  status?: boolean;
-  ok?: boolean;
-  uid?: string;
-  access_token?: string;
-  cookies?: ApiCookie[] | string;
-  cookie?: ApiCookie[] | string;
-  message?: string;
-}
-
 interface LoginApi {
   getCurrentUserID?: () => string;
   getCookies?: () => string;
@@ -41,24 +25,6 @@ type LegacyLoginHelper = ((
     globalOptions: FcaOptions,
     callback: LoginHelperCallback
   ) => void;
-  tokensViaAPI: (
-    email: string,
-    password: string,
-    twoFactor?: string | null,
-    apiBaseUrl?: string | null
-  ) => Promise<TokensApiResponse>;
-  loginViaAPI: (
-    email: string,
-    password: string,
-    twoFactor?: string | null,
-    apiBaseUrl?: string | null,
-    apiKey?: string | null
-  ) => Promise<TokensApiResponse>;
-  tokens: (
-    email: string,
-    password: string,
-    twoFactor?: string | null
-  ) => Promise<TokensApiResponse>;
   normalizeCookieHeaderString: (cookieHeader: string) => string[];
   setJarFromPairs: (
     jar: {

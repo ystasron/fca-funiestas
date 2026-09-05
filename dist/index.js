@@ -2784,15 +2784,15 @@ var require_parseDate = __commonJS({
       if (!cookieDate) {
         return;
       }
-      const tokens2 = cookieDate.split(DATE_DELIM);
+      const tokens = cookieDate.split(DATE_DELIM);
       let hour;
       let minute;
       let second;
       let dayOfMonth;
       let month;
       let year;
-      for (let i = 0; i < tokens2.length; i++) {
-        const token = (tokens2[i] ?? "").trim();
+      for (let i = 0; i < tokens.length; i++) {
+        const token = (tokens[i] ?? "").trim();
         if (!token.length) {
           continue;
         }
@@ -15723,185 +15723,6 @@ var init_package = __esm({
   }
 });
 
-// src/core/update-check.ts
-function compareVersionPart(left, right) {
-  const leftNumber = Number(left);
-  const rightNumber = Number(right);
-  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
-    if (leftNumber === rightNumber) {
-      return 0;
-    }
-    return leftNumber > rightNumber ? 1 : -1;
-  }
-  return left.localeCompare(right);
-}
-function compareSemver(left, right) {
-  const leftParts = left.replace(/^v/i, "").split("-");
-  const rightParts = right.replace(/^v/i, "").split("-");
-  const leftCore = leftParts[0].split(".");
-  const rightCore = rightParts[0].split(".");
-  const length = Math.max(leftCore.length, rightCore.length);
-  for (let index = 0; index < length; index++) {
-    const result = compareVersionPart(leftCore[index] || "0", rightCore[index] || "0");
-    if (result !== 0) {
-      return result;
-    }
-  }
-  if (leftParts.length === 1 && rightParts.length === 1) {
-    return 0;
-  }
-  if (leftParts.length === 1) {
-    return 1;
-  }
-  if (rightParts.length === 1) {
-    return -1;
-  }
-  return compareVersionPart(leftParts.slice(1).join("-"), rightParts.slice(1).join("-"));
-}
-function normalizeRegistryUrl(value) {
-  return value.replace(/\/+$/, "");
-}
-function readUpdateConfig(input) {
-  if (input && "checkUpdate" in input) {
-    return input.checkUpdate;
-  }
-  const fallback = {
-    enabled: true,
-    install: false,
-    notifyIfCurrent: false,
-    packageName: package_default.name,
-    registryUrl: package_default.publishConfig?.registry || "https://registry.npmjs.org",
-    timeoutMs: 1e4
-  };
-  return { ...fallback, ...input || {} };
-}
-function fetchLatestVersion(config2) {
-  const url = `${normalizeRegistryUrl(config2.registryUrl)}/${encodeURIComponent(
-    config2.packageName
-  )}/latest`;
-  return new Promise((resolve, reject) => {
-    const request = import_node_https.default.get(
-      url,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": `${config2.packageName}-update-check`
-        },
-        timeout: config2.timeoutMs
-      },
-      (response) => {
-        let body = "";
-        response.on("data", (chunk) => {
-          body += chunk;
-        });
-        response.on("end", () => {
-          try {
-            const payload = JSON.parse(body);
-            const version = payload?.version;
-            if (!version || typeof version !== "string") {
-              reject(new Error("Invalid version payload from registry"));
-              return;
-            }
-            resolve(version);
-          } catch (error) {
-            reject(error);
-          }
-        });
-      }
-    );
-    request.on("timeout", () => {
-      request.destroy(new Error("Update check timed out"));
-    });
-    request.on("error", reject);
-  });
-}
-function installLatestPackage(config2, latestVersion) {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const dependency = `${config2.packageName}@${latestVersion}`;
-  return new Promise((resolve, reject) => {
-    (0, import_node_child_process.execFile)(npmCommand, ["i", dependency], { cwd: process.cwd() }, (error, _stdout, stderr) => {
-      if (error) {
-        reject(new Error(stderr || error.message));
-        return;
-      }
-      resolve();
-    });
-  });
-}
-async function checkForPackageUpdate(input, logger) {
-  const config2 = readUpdateConfig(input);
-  if (!config2.enabled) {
-    return null;
-  }
-  if (inflightCheck) {
-    return inflightCheck;
-  }
-  inflightCheck = (async () => {
-    const currentVersion = package_default.version;
-    const latestVersion = await fetchLatestVersion(config2);
-    const updateAvailable = compareSemver(latestVersion, currentVersion) > 0;
-    if (!updateAvailable) {
-      if (config2.notifyIfCurrent) {
-        logger?.(`You're already on the latest version (${currentVersion})`, "info");
-      }
-      return {
-        packageName: config2.packageName,
-        currentVersion,
-        latestVersion,
-        updateAvailable: false,
-        installed: false
-      };
-    }
-    logger?.(
-      `Update available for ${config2.packageName}: ${currentVersion} -> ${latestVersion}`,
-      "warn"
-    );
-    if (!config2.install) {
-      return {
-        packageName: config2.packageName,
-        currentVersion,
-        latestVersion,
-        updateAvailable: true,
-        installed: false
-      };
-    }
-    logger?.(`Installing ${config2.packageName}@${latestVersion}`, "info");
-    await installLatestPackage(config2, latestVersion);
-    logger?.(`Installed ${config2.packageName}@${latestVersion}. Restart to apply.`, "info");
-    return {
-      packageName: config2.packageName,
-      currentVersion,
-      latestVersion,
-      updateAvailable: true,
-      installed: true
-    };
-  })().finally(() => {
-    inflightCheck = null;
-  });
-  return inflightCheck;
-}
-async function runConfiguredUpdateCheck(config2, logger) {
-  try {
-    return await checkForPackageUpdate(config2, logger);
-  } catch (error) {
-    logger?.(
-      `Cannot check for updates: ${error && error.message ? error.message : String(error)}`,
-      "warn"
-    );
-    return null;
-  }
-}
-var import_node_https, import_node_child_process, inflightCheck;
-var init_update_check = __esm({
-  "src/core/update-check.ts"() {
-    "use strict";
-    import_node_https = __toESM(require("https"));
-    import_node_child_process = require("child_process");
-    init_package();
-    inflightCheck = null;
-  }
-});
-
 // src/domains/account/commands/get-current-user-id.ts
 function createGetCurrentUserIdCommand(deps) {
   const { ctx } = deps;
@@ -18750,7 +18571,7 @@ async function normalizeUploadInput(input, http3, ua) {
   throw new Error("Unrecognized input");
 }
 async function singleUpload(params) {
-  const { http: http3, urlBase, file, ua, tokens: tokens2, retries = 2 } = params;
+  const { http: http3, urlBase, file, ua, tokens, retries = 2 } = params;
   const chunks = [];
   for await (const chunk of file.stream) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -18769,7 +18590,7 @@ async function singleUpload(params) {
       "Accept-Encoding": "gzip, deflate, br",
       "User-Agent": ua,
       "x-asbd-id": "359341",
-      "x-fb-lsd": tokens2.lsd || "",
+      "x-fb-lsd": tokens.lsd || "",
       "x-fb-friendly-name": "MercuryUpload",
       "x-fb-request-analytics-tags": JSON.stringify({
         network_tags: {
@@ -18793,9 +18614,9 @@ async function singleUpload(params) {
       Connection: "keep-alive"
     };
     const finalUrl = new import_node_url.URL(urlBase);
-    finalUrl.searchParams.set("fb_dtsg", tokens2.fb_dtsg);
-    finalUrl.searchParams.set("jazoest", tokens2.jazoest);
-    finalUrl.searchParams.set("lsd", tokens2.lsd);
+    finalUrl.searchParams.set("fb_dtsg", tokens.fb_dtsg);
+    finalUrl.searchParams.set("jazoest", tokens.jazoest);
+    finalUrl.searchParams.set("lsd", tokens.lsd);
     finalUrl.searchParams.set("__aaid", "0");
     finalUrl.searchParams.set("__ccg", "EXCELLENT");
     try {
@@ -18901,7 +18722,7 @@ function createAttachmentUploadTransport(deps) {
       const html = await fetchHtml("https://www.facebook.com/", {
         Referer: "https://www.facebook.com/"
       });
-      const tokens2 = {
+      const tokens = {
         fb_dtsg: getFrom2(html, '"DTSGInitData",[],{"token":"', '",') || html.match(/name="fb_dtsg"\s+value="([^"]+)"/)?.[1] || "",
         jazoest: getFrom2(html, 'name="jazoest" value="', '"') || getFrom2(html, "jazoest=", '",') || html.match(/name="jazoest"\s+value="([^"]+)"/)?.[1] || "",
         lsd: getFrom2(html, '["LSD",[],{"token":"', '"}') || html.match(/name="lsd"\s+value="([^"]+)"/)?.[1] || "",
@@ -18909,12 +18730,12 @@ function createAttachmentUploadTransport(deps) {
         spin_t: pick(/"__spin_t":(\d+)/, html),
         rev: pick(/"__rev":(\d+)/, html)
       };
-      if ((!tokens2.fb_dtsg || !tokens2.lsd) && !tokenState.value) {
+      if ((!tokens.fb_dtsg || !tokens.lsd) && !tokenState.value) {
         throw new Error("Failed to fetch fb_dtsg or LSD from Facebook");
       }
-      tokenState.value = tokens2;
+      tokenState.value = tokens;
       tokenState.timestamp = now;
-      return tokens2;
+      return tokens;
     } catch (error) {
       if (tokenState.value) {
         logger?.warn?.(
@@ -18932,7 +18753,7 @@ function createAttachmentUploadTransport(deps) {
       throw new Error("No files to upload");
     }
     try {
-      let tokens2 = await getTokens();
+      let tokens = await getTokens();
       const normalizedInputs = await Promise.all(
         inputs.map((input) => normalizeUploadInput(input, http3, ua))
       );
@@ -18946,14 +18767,14 @@ function createAttachmentUploadTransport(deps) {
       query.push("__a=1");
       query.push("dpr=1");
       query.push(`__req=${encodeURIComponent(Math.floor(Math.random() * 36 ** 2).toString(36))}`);
-      if (tokens2.spin_r) {
-        query.push(`__spin_r=${encodeURIComponent(tokens2.spin_r)}`);
+      if (tokens.spin_r) {
+        query.push(`__spin_r=${encodeURIComponent(tokens.spin_r)}`);
       }
-      if (tokens2.spin_t) {
-        query.push(`__spin_t=${encodeURIComponent(tokens2.spin_t)}`);
+      if (tokens.spin_t) {
+        query.push(`__spin_t=${encodeURIComponent(tokens.spin_t)}`);
       }
-      if (tokens2.rev) {
-        query.push(`__rev=${encodeURIComponent(tokens2.rev)}`);
+      if (tokens.rev) {
+        query.push(`__rev=${encodeURIComponent(tokens.rev)}`);
       }
       query.push("__spin_b=trunk");
       query.push("__comet_req=15");
@@ -18964,7 +18785,7 @@ function createAttachmentUploadTransport(deps) {
           urlBase: baseUrl,
           file: normalizedInputs[0],
           ua,
-          tokens: tokens2
+          tokens
         });
         const checkpointError = createCheckpointError(response);
         if (checkpointError) {
@@ -18995,7 +18816,7 @@ function createAttachmentUploadTransport(deps) {
             urlBase: baseUrl,
             file,
             ua,
-            tokens: tokens2
+            tokens
           })
         )
       );
@@ -24018,143 +23839,6 @@ var require_parse_delta = __commonJS({
 });
 
 // src/transport/realtime/get-seq-id.ts
-async function tryAutoLogin(logger, config2, ctx, _defaultFuncs) {
-  const email = config2.credentials?.email || config2.email;
-  const password = config2.credentials?.password || config2.password;
-  const twofactor = config2.credentials?.twofactor || config2.twofactor || null;
-  if (config2.autoLogin === false || !email || !password) {
-    return null;
-  }
-  logger("getSeqID: attempting auto re-login via API...", "warn");
-  try {
-    const result = await tokensViaAPI(
-      email,
-      password,
-      twofactor,
-      config2.apiServer || null
-    );
-    if (result && result.status) {
-      let cookiePairs = [];
-      if (typeof result.cookies === "string") {
-        cookiePairs = normalizeCookieHeaderString(result.cookies);
-      } else if (Array.isArray(result.cookies)) {
-        cookiePairs = result.cookies.map((c) => {
-          if (typeof c === "string") return c;
-          if (c && typeof c === "object") return `${c.key || c.name}=${c.value}`;
-          return null;
-        }).filter((x) => x != null);
-      }
-      if (cookiePairs.length === 0 && result.cookie) {
-        if (typeof result.cookie === "string") {
-          cookiePairs = normalizeCookieHeaderString(result.cookie);
-        } else if (Array.isArray(result.cookie)) {
-          cookiePairs = result.cookie.map((c) => {
-            if (typeof c === "string") return c;
-            if (c && typeof c === "object") return `${c.key || c.name}=${c.value}`;
-            return null;
-          }).filter((x) => x != null);
-        }
-      }
-      if (cookiePairs.length > 0 || result.uid) {
-        logger(`getSeqID: auto re-login successful! UID: ${result.uid}, Cookies: ${cookiePairs.length}`, "info");
-        if (ctx.jar && cookiePairs.length > 0) {
-          const expires = new Date(Date.now() + 31536e6).toUTCString();
-          for (const kv of cookiePairs) {
-            const cookieStr = `${kv}; expires=${expires}; domain=.facebook.com; path=/;`;
-            try {
-              if (typeof ctx.jar.setCookieSync === "function") {
-                ctx.jar.setCookieSync(cookieStr, "https://www.facebook.com");
-              } else if (typeof ctx.jar.setCookie === "function") {
-                await ctx.jar.setCookie(cookieStr, "https://www.facebook.com");
-              }
-            } catch (err) {
-              logger(`getSeqID: Failed to set cookie ${kv.substring(0, 50)}: ${err && err.message ? err.message : String(err)}`, "warn");
-            }
-          }
-          logger(`getSeqID: applied ${cookiePairs.length} API cookies to jar`, "info");
-        }
-        logger("getSeqID: refreshing web session after API login...", "info");
-        try {
-          const expires = new Date(Date.now() + 31536e6).toUTCString();
-          for (const kv of cookiePairs) {
-            const cookieStr = `${kv}; expires=${expires}; domain=.facebook.com; path=/;`;
-            try {
-              if (typeof jar?.setCookieSync === "function") {
-                jar.setCookieSync(cookieStr, "https://www.facebook.com");
-              } else if (typeof jar?.setCookie === "function") {
-                await jar.setCookie(cookieStr, "https://www.facebook.com");
-              }
-            } catch (err) {
-              logger(
-                `getSeqID: Failed to set cookie in global jar ${kv.substring(0, 50)}: ${err && err.message ? err.message : String(err)}`,
-                "warn"
-              );
-            }
-          }
-          let webResponse = null;
-          let htmlContent = "";
-          const htmlUID = (body) => {
-            const s = typeof body === "string" ? body : String(body ?? "");
-            return s.match(/"USER_ID"\s*:\s*"(\d+)"/)?.[1] || s.match(/\["CurrentUserInitialData",\[\],\{.*?"USER_ID":"(\d+)".*?\},\d+\]/)?.[1];
-          };
-          const isValidUID = (uid) => uid && uid !== "0" && /^\d+$/.test(uid) && parseInt(uid, 10) > 0;
-          const urlsToTry = ["https://m.facebook.com/", "https://www.facebook.com/"];
-          for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-              const urlToUse = attempt === 0 ? urlsToTry[0] : urlsToTry[attempt % urlsToTry.length];
-              logger(`getSeqID: Refreshing ${urlToUse} (attempt ${attempt + 1}/3)...`, "info");
-              webResponse = await get(urlToUse, ctx.jar, null, ctx.globalOptions, ctx);
-              if (webResponse && webResponse.data) {
-                await saveCookies(ctx.jar)(webResponse);
-                htmlContent = typeof webResponse.data === "string" ? webResponse.data : String(webResponse.data || "");
-                const htmlUserID = htmlUID(htmlContent);
-                if (isValidUID(htmlUserID)) {
-                  logger(`getSeqID: Found valid USER_ID in HTML from ${urlToUse}: ${htmlUserID}`, "info");
-                  break;
-                } else if (attempt < 2) {
-                  logger(`getSeqID: No valid USER_ID in HTML from ${urlToUse} (attempt ${attempt + 1}/3), retrying...`, "warn");
-                  await new Promise((resolve) => setTimeout(resolve, 1e3 * (attempt + 1)));
-                }
-              }
-            } catch (refreshErr) {
-              logger(`getSeqID: Error refreshing session (attempt ${attempt + 1}/3): ${refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr)}`, "warn");
-              if (attempt < 2) {
-                await new Promise((resolve) => setTimeout(resolve, 1e3 * (attempt + 1)));
-              }
-            }
-          }
-          if (webResponse && webResponse.data) {
-            const updatedCookies = await ctx.jar.getCookies("https://www.facebook.com");
-            logger(`getSeqID: refreshed session, now have ${updatedCookies.length} web cookies`, "info");
-            const htmlUserID = htmlUID(htmlContent);
-            if (!isValidUID(htmlUserID)) {
-              logger("getSeqID: WARNING - HTML does not show valid USER_ID after refresh. Session may not be fully established.", "warn");
-            }
-            if (ctx) {
-              ctx.loggedIn = true;
-              if (isValidUID(htmlUserID)) {
-                ctx.userID = htmlUserID;
-                logger(`getSeqID: Updated ctx.userID from HTML: ${htmlUserID}`, "info");
-              } else if (result.uid && isValidUID(result.uid)) {
-                ctx.userID = result.uid;
-                logger(`getSeqID: Updated ctx.userID from API: ${result.uid}`, "info");
-              }
-            }
-          } else {
-            logger("getSeqID: Failed to refresh web session after API login", "error");
-          }
-        } catch (refreshErr) {
-          logger(`getSeqID: web session refresh failed - ${refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr)}`, "warn");
-        }
-        return { ...result, cookies: cookiePairs };
-      }
-    }
-    logger(`getSeqID: auto re-login failed - ${result && result.message ? result.message : "Loose error"}`, "error");
-  } catch (loginErr) {
-    logger(`getSeqID: auto re-login error - ${loginErr && loginErr.message ? loginErr.message : String(loginErr)}`, "error");
-  }
-  return null;
-}
 function createGetSeqID(deps) {
   const { listenMqtt: listenMqtt2, logger, emitAuth } = deps;
   return function getSeqID(defaultFuncs, api, ctx, globalCallback, form, retryCount = 0) {
@@ -24202,14 +23886,6 @@ function createGetSeqID(deps) {
           }
           return getSeqID(defaultFuncs, api, ctx, globalCallback, form, retryCount + 1);
         }
-        logger("getSeqID: all retries failed, attempting auto re-login...", "warn");
-        const { config: config2 } = loadConfig();
-        const loginResult = await tryAutoLogin(logger, config2, ctx, defaultFuncs);
-        if (loginResult) {
-          logger("getSeqID: retrying with new session...", "info");
-          await new Promise((resolve) => setTimeout(resolve, 3e3));
-          return getSeqID(defaultFuncs, api, ctx, globalCallback, form, 0);
-        }
         if (/blocked/i.test(msg)) {
           return emitAuth(ctx, api, globalCallback, "login_blocked", msg);
         }
@@ -24226,8 +23902,6 @@ var import_format17, getType13, get_seq_id_default;
 var init_get_seq_id = __esm({
   "src/transport/realtime/get-seq-id.ts"() {
     "use strict";
-    init_auth();
-    init_config2();
     init_client2();
     import_format17 = __toESM(require_format());
     init_request();
@@ -26016,18 +25690,7 @@ var init_remoteClient = __esm({
 
 // src/core/auth-helpers.ts
 function createAuthCore(opts = {}) {
-  const logger = opts.logger;
-  const config2 = opts.config || {};
-  const axiosBase2 = opts.axiosBase || import_axios3.default;
   const REGION_MAP2 = new Map((opts.regions || DEFAULT_REGIONS).map((r) => [r.code, r]));
-  const log2 = (message, type = "info") => {
-    try {
-      if (typeof logger === "function") {
-        logger(message, type);
-      }
-    } catch {
-    }
-  };
   function parseRegion2(html) {
     try {
       const m1 = html.match(/"endpoint":"([^"]+)"/);
@@ -26041,114 +25704,6 @@ function createAuthCore(opts = {}) {
     } catch {
       return "PRN";
     }
-  }
-  function mask(s, keep = 3) {
-    if (!s) return "";
-    const n = s.length;
-    return n <= keep ? "*".repeat(n) : s.slice(0, keep) + "*".repeat(Math.max(0, n - keep));
-  }
-  async function loginViaAPI3(email, password, twoFactor = null, apiBaseUrl = null, apiKey = null) {
-    try {
-      const baseUrl = apiBaseUrl || config2.apiServer || "https://minhdong.site";
-      const endpoint = `${baseUrl}/api/v1/facebook/login_ios`;
-      const xApiKey = apiKey || config2.apiKey || null;
-      const body = { email, password };
-      if (twoFactor && typeof twoFactor === "string" && twoFactor.trim()) {
-        body.twoFactor = twoFactor.replace(/\s+/g, "").toUpperCase();
-      }
-      const headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      };
-      if (xApiKey) {
-        headers["x-api-key"] = xApiKey;
-      }
-      log2(`API-LOGIN: Attempting login for ${mask(email, 2)} via iOS API`, "info");
-      const response = await axiosBase2({
-        method: "POST",
-        url: endpoint,
-        headers,
-        data: body,
-        timeout: 6e4,
-        validateStatus: () => true
-      });
-      if (response.status === 200 && response.data) {
-        const data = response.data;
-        if (data.error) {
-          log2(`API-LOGIN: Login failed - ${data.error}`, "error");
-          return { ok: false, message: data.error };
-        }
-        const uid = data.uid || data.user_id || data.userId || null;
-        const accessToken = data.access_token || data.accessToken || null;
-        const cookie = data.cookie || data.cookies || null;
-        if (!uid && !accessToken && !cookie) {
-          log2("API-LOGIN: Response missing required fields (uid, access_token, cookie)", "warn");
-          return { ok: false, message: "Invalid response from API" };
-        }
-        log2(`API-LOGIN: Login successful for UID: ${uid || "Loose"}`, "info");
-        let cookies = [];
-        if (typeof cookie === "string") {
-          const pairs = cookie.split(";").map((p) => p.trim()).filter(Boolean);
-          for (const pair of pairs) {
-            const eq = pair.indexOf("=");
-            if (eq <= 0) continue;
-            const key = pair.slice(0, eq).trim();
-            const value = pair.slice(eq + 1).trim();
-            cookies.push({
-              key,
-              value,
-              domain: ".facebook.com",
-              path: "/"
-            });
-          }
-        } else if (Array.isArray(cookie)) {
-          cookies = cookie.map((c) => ({
-            key: c.key || c.name,
-            value: c.value,
-            domain: c.domain || ".facebook.com",
-            path: c.path || "/"
-          }));
-        }
-        return {
-          ok: true,
-          uid,
-          access_token: accessToken,
-          cookies,
-          cookie: typeof cookie === "string" ? cookie : null
-        };
-      }
-      const errorMsg = response.data && response.data.error ? response.data.error : response.data && response.data.message ? response.data.message : `HTTP ${response.status}`;
-      log2(`API-LOGIN: Login failed - ${errorMsg}`, "error");
-      return { ok: false, message: errorMsg };
-    } catch (error) {
-      const errMsg2 = error && error.message ? error.message : String(error);
-      log2(`API-LOGIN: Request failed - ${errMsg2}`, "error");
-      return { ok: false, message: errMsg2 };
-    }
-  }
-  async function tokensViaAPI3(email, password, twoFactor = null, apiBaseUrl = null) {
-    const t0 = process.hrtime.bigint();
-    if (!email || !password) {
-      return { status: false, message: "Please provide email and password" };
-    }
-    log2(`API-LOGIN: Initialize login ${mask(email, 2)}`, "info");
-    const res = await loginViaAPI3(email, password, twoFactor, apiBaseUrl);
-    if (res && res.ok) {
-      log2(`API-LOGIN: Login success - UID: ${res.uid}`, "info");
-      const t1 = Number(process.hrtime.bigint() - t0) / 1e6;
-      log2(`Done API login ${Math.round(t1)}ms`, "info");
-      return {
-        status: true,
-        cookies: res.cookies,
-        uid: res.uid,
-        access_token: res.access_token,
-        cookie: res.cookie
-      };
-    }
-    return {
-      status: false,
-      message: res && res.message ? res.message : "Login failed"
-    };
   }
   function normalizeCookieHeaderString3(s) {
     let str = String(s || "").trim();
@@ -26194,17 +25749,14 @@ function createAuthCore(opts = {}) {
   return {
     REGION_MAP: REGION_MAP2,
     parseRegion: parseRegion2,
-    loginViaAPI: loginViaAPI3,
-    tokensViaAPI: tokensViaAPI3,
     normalizeCookieHeaderString: normalizeCookieHeaderString3,
     setJarFromPairs: setJarFromPairs3
   };
 }
-var import_axios3, DEFAULT_REGIONS;
+var DEFAULT_REGIONS;
 var init_auth_helpers = __esm({
   "src/core/auth-helpers.ts"() {
     "use strict";
-    import_axios3 = __toESM(require("axios"));
     DEFAULT_REGIONS = [
       { code: "PRN", name: "Pacific Northwest Region", location: "Khu v\xE1\xBB\xB1c T\xC3\xA2y B\xE1\xBA\xAFc Th\xC3\xA1i B\xC3\xACnh D\xC6\xB0\xC6\xA1ng" },
       { code: "VLL", name: "Valley Region", location: "Valley" },
@@ -26660,13 +26212,7 @@ function errMsg(e) {
 function parseRegion(html) {
   return authCore.parseRegion(html);
 }
-async function loginViaAPI(email, password, twoFactor = null, apiBaseUrl = null, apiKey = null) {
-  return authCore.loginViaAPI(email, password, twoFactor, apiBaseUrl, apiKey);
-}
-async function tokensViaAPI2(email, password, twoFactor = null, apiBaseUrl = null) {
-  return authCore.tokensViaAPI(email, password, twoFactor ?? null, apiBaseUrl ?? null);
-}
-function normalizeCookieHeaderString2(s) {
+function normalizeCookieHeaderString(s) {
   return authCore.normalizeCookieHeaderString(s);
 }
 function setJarFromPairs(j, pairs, domain) {
@@ -26847,9 +26393,6 @@ async function setJarCookies(j, appstate) {
   }
   await Promise.all(tasks);
 }
-async function tokens(username, password, twofactor = null) {
-  return tokensViaAPI2(username, password, twofactor);
-}
 async function hydrateJarFromDB(userID) {
   try {
     let ck = null;
@@ -26862,7 +26405,7 @@ async function hydrateJarFromDB(userID) {
       app = await getLatestBackupAny("appstate");
     }
     if (ck) {
-      const pairs = normalizeCookieHeaderString2(ck);
+      const pairs = normalizeCookieHeaderString(ck);
       if (pairs.length) {
         setJarFromPairs(jar2, pairs, ".facebook.com");
         return true;
@@ -26884,184 +26427,6 @@ async function hydrateJarFromDB(userID) {
   } catch {
     return false;
   }
-}
-async function tryAutoLoginIfNeeded(currentHtml, currentCookies, globalOptions, ctxRef, hadAppStateInput = false) {
-  const isValidUID = (uid) => Boolean(uid && uid !== "0" && /^\d+$/.test(String(uid)) && parseInt(String(uid), 10) > 0);
-  const getUID = (cs) => cs.find((c) => c.key === "i_user")?.value || cs.find((c) => c.key === "c_user")?.value || cs.find((c) => c.name === "i_user")?.value || cs.find((c) => c.name === "c_user")?.value;
-  const htmlUID = (body) => {
-    const s = typeof body === "string" ? body : String(body ?? "");
-    return s.match(/"USER_ID"\s*:\s*"(\d+)"/)?.[1] || s.match(/\["CurrentUserInitialData",\[\],\{.*?"USER_ID":"(\d+)".*?\},\d+\]/)?.[1];
-  };
-  let userID = getUID(currentCookies);
-  if (!isValidUID(userID)) {
-    userID = htmlUID(currentHtml);
-  }
-  if (isValidUID(userID)) {
-    return { html: currentHtml, cookies: currentCookies, userID };
-  }
-  logger_default("tryAutoLoginIfNeeded: No valid userID found, attempting recovery...", "warn");
-  if (hadAppStateInput) {
-    const isCheckpoint = currentHtml.includes("/checkpoint/block/?next");
-    if (!isCheckpoint) {
-      try {
-        const refreshedCookies = await Promise.resolve(jar2.getCookies("https://www.facebook.com"));
-        userID = getUID(refreshedCookies);
-        if (isValidUID(userID)) {
-          return { html: currentHtml, cookies: refreshedCookies, userID };
-        }
-      } catch {
-      }
-    }
-  }
-  const hydrated = await hydrateJarFromDB(null);
-  if (hydrated) {
-    logger_default("tryAutoLoginIfNeeded: Trying backup from DB...", "info");
-    try {
-      const initial = await get2("https://www.facebook.com/", jar2, null, globalOptions).then(saveCookies(jar2));
-      const resB = await ctxRef.bypassAutomation(initial, jar2) || initial;
-      const htmlB = resB && resB.data ? resB.data : "";
-      if (!htmlB.includes("/checkpoint/block/?next")) {
-        const htmlUserID = htmlUID(htmlB);
-        if (isValidUID(htmlUserID)) {
-          const cookiesB = await Promise.resolve(jar2.getCookies("https://www.facebook.com"));
-          logger_default(`tryAutoLoginIfNeeded: DB backup session valid, USER_ID=${htmlUserID}`, "info");
-          return { html: htmlB, cookies: cookiesB, userID: htmlUserID };
-        } else {
-          logger_default(`tryAutoLoginIfNeeded: DB backup session dead (HTML USER_ID=${htmlUserID || "empty"}), will try API login...`, "warn");
-        }
-      }
-    } catch (dbErr) {
-      logger_default(`tryAutoLoginIfNeeded: DB backup failed - ${errMsg(dbErr)}`, "warn");
-    }
-  }
-  if (config.autoLogin === false || String(config.autoLogin) === "false") {
-    throw new Error("AppState expired \u2014 Auto-login is disabled");
-  }
-  const u = config.credentials?.email || config.email;
-  const p = config.credentials?.password || config.password;
-  const tf = config.credentials?.twofactor || config.twofactor || null;
-  if (!u || !p) {
-    logger_default("tryAutoLoginIfNeeded: No credentials configured for auto-login!", "error");
-    throw new Error("Missing credentials for auto-login (email/password not configured in fca-config.json)");
-  }
-  logger_default(`tryAutoLoginIfNeeded: Attempting API login for ${u.slice(0, 3)}***...`, "info");
-  const r = await tokens(u, p, tf);
-  if (!r || !r.status) {
-    throw new Error(r && r.message ? r.message : "API Login failed");
-  }
-  logger_default(`tryAutoLoginIfNeeded: API login successful! UID: ${r.uid}`, "info");
-  let cookiePairs = [];
-  if (typeof r.cookies === "string") {
-    cookiePairs = normalizeCookieHeaderString2(r.cookies);
-  } else if (Array.isArray(r.cookies)) {
-    cookiePairs = r.cookies.map((c) => {
-      if (typeof c === "string") {
-        return c;
-      }
-      if (c && typeof c === "object") {
-        return `${c.key || c.name}=${c.value}`;
-      }
-      return null;
-    }).filter((x) => x != null);
-  }
-  if (cookiePairs.length === 0 && r.cookie) {
-    if (typeof r.cookie === "string") {
-      cookiePairs = normalizeCookieHeaderString2(r.cookie);
-    } else if (Array.isArray(r.cookie)) {
-      cookiePairs = r.cookie.map((c) => {
-        if (typeof c === "string") return c;
-        if (c && typeof c === "object") return `${c.key || c.name}=${c.value}`;
-        return null;
-      }).filter((x) => x != null);
-    }
-  }
-  if (cookiePairs.length === 0) {
-    logger_default("tryAutoLoginIfNeeded: No cookies found in API response", "warn");
-    throw new Error("API login returned no cookies");
-  } else {
-    logger_default(`tryAutoLoginIfNeeded: Parsed ${cookiePairs.length} cookies from API response`, "info");
-    setJarFromPairs(jar2, cookiePairs, ".facebook.com");
-  }
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  let html2 = "";
-  let res2 = null;
-  let retryCount = 0;
-  const maxRetries = 3;
-  const urlsToTry = ["https://m.facebook.com/", "https://www.facebook.com/"];
-  while (retryCount < maxRetries) {
-    try {
-      const urlToUse = retryCount === 0 ? urlsToTry[0] : urlsToTry[retryCount % urlsToTry.length];
-      logger_default(`tryAutoLoginIfNeeded: Refreshing ${urlToUse} (attempt ${retryCount + 1}/${maxRetries})...`, "info");
-      const initial2 = await get2(urlToUse, jar2, null, globalOptions).then(saveCookies(jar2));
-      res2 = await ctxRef.bypassAutomation(initial2, jar2) || initial2;
-      html2 = res2 && res2.data ? res2.data : "";
-      if (html2.includes("/checkpoint/block/?next")) {
-        throw new Error("Checkpoint after API login");
-      }
-      const htmlUserID = htmlUID(html2);
-      if (isValidUID(htmlUserID)) {
-        logger_default(`tryAutoLoginIfNeeded: Found valid USER_ID in HTML from ${urlToUse}: ${htmlUserID}`, "info");
-        break;
-      }
-      if (retryCount < maxRetries - 1) {
-        logger_default(`tryAutoLoginIfNeeded: No valid USER_ID in HTML from ${urlToUse} (attempt ${retryCount + 1}/${maxRetries}), retrying...`, "warn");
-        await new Promise((resolve) => setTimeout(resolve, 1e3 * (retryCount + 1)));
-        retryCount++;
-      } else {
-        logger_default("tryAutoLoginIfNeeded: No valid USER_ID found in HTML after retries", "warn");
-        break;
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("Checkpoint")) {
-        throw err;
-      }
-      if (retryCount < maxRetries - 1) {
-        logger_default(`tryAutoLoginIfNeeded: Error refreshing page (attempt ${retryCount + 1}/${maxRetries}): ${errMsg(err)}`, "warn");
-        await new Promise((resolve) => setTimeout(resolve, 1e3 * (retryCount + 1)));
-        retryCount++;
-      } else {
-        throw err;
-      }
-    }
-  }
-  const cookies2 = await Promise.resolve(jar2.getCookies("https://www.facebook.com"));
-  const uid2 = getUID(cookies2);
-  const htmlUserID2 = htmlUID(html2);
-  let finalUID = null;
-  if (isValidUID(htmlUserID2)) {
-    finalUID = htmlUserID2;
-    logger_default(`tryAutoLoginIfNeeded: Using USER_ID from HTML: ${finalUID}`, "info");
-  } else if (isValidUID(uid2)) {
-    finalUID = uid2;
-    logger_default(`tryAutoLoginIfNeeded: Using USER_ID from cookies: ${finalUID}`, "info");
-  } else if (isValidUID(r.uid)) {
-    finalUID = r.uid;
-    logger_default(`tryAutoLoginIfNeeded: Using USER_ID from API response: ${finalUID}`, "info");
-  }
-  if (!isValidUID(finalUID)) {
-    logger_default(`tryAutoLoginIfNeeded: HTML check - USER_ID from HTML: ${htmlUserID2 || "none"}, from cookies: ${uid2 || "none"}, from API: ${r.uid || "none"}`, "error");
-    throw new Error("Login failed - could not get valid userID after API login. HTML may indicate session is not established.");
-  }
-  if (!isValidUID(htmlUserID2)) {
-    logger_default("tryAutoLoginIfNeeded: WARNING - HTML does not show valid USER_ID, but proceeding with cookie-based UID", "warn");
-  }
-  return { html: html2, cookies: cookies2, userID: finalUID };
-}
-function makeLogin(j, email, password, globalOptions) {
-  return async function() {
-    const u = email || config.credentials?.email;
-    const p = password || config.credentials?.password;
-    const tf = config.credentials?.twofactor || null;
-    if (!u || !p) return;
-    const r = await tokens(u, p, tf);
-    if (r && r.status && Array.isArray(r.cookies)) {
-      const pairs = r.cookies.map((c) => `${c.key || c.name}=${c.value}`);
-      setJarFromPairs(j, pairs, ".facebook.com");
-      await get2("https://www.facebook.com/", j, null, globalOptions).then(saveCookies(j));
-    } else {
-      throw new Error(r && r.message ? r.message : "Login failed");
-    }
-  };
 }
 function loginHelper(appState, Cookie, email, password, globalOptions, callback) {
   try {
@@ -27134,7 +26499,7 @@ function loginHelper(appState, Cookie, email, password, globalOptions, callback)
         }
         if (Cookie) {
           let cookiePairs = [];
-          if (typeof Cookie === "string") cookiePairs = normalizeCookieHeaderString2(Cookie);
+          if (typeof Cookie === "string") cookiePairs = normalizeCookieHeaderString(Cookie);
           else if (Array.isArray(Cookie)) cookiePairs = Cookie.map(String).filter(Boolean);
           else if (Cookie && typeof Cookie === "object") cookiePairs = Object.entries(Cookie).map(([k, v]) => `${k}=${v}`);
           if (cookiePairs.length) setJarFromPairs(jar2, cookiePairs, domain);
@@ -27210,10 +26575,8 @@ function loginHelper(appState, Cookie, email, password, globalOptions, callback)
         const initial = await get2("https://www.facebook.com/", jar2, null, globalOptions).then(saveCookies(jar2));
         return await ctx.bypassAutomation(initial, jar2) || initial;
       }
-      logger_default("AppState expired \u2014 proceeding to email/password login", "warn");
-      return get2("https://www.facebook.com/", null, null, globalOptions).then(saveCookies(jar2)).then(makeLogin(jar2, email, password, globalOptions)).then(function() {
-        return get2("https://www.facebook.com/", jar2, null, globalOptions).then(saveCookies(jar2));
-      });
+      logger_default("AppState expired \u2014 no valid session found. Provide appState or Cookie to login.", "error");
+      throw new Error("AppState expired \u2014 no valid session found. Provide appState or Cookie to login.");
     })().then(async function(res) {
       const ctx = {};
       ctx.options = globalOptions;
@@ -27287,32 +26650,7 @@ function loginHelper(appState, Cookie, email, password, globalOptions, callback)
         userID = userIDFromAppState;
       }
       if (!isValidUID(userID)) {
-        logger_default("Invalid userID detected (missing or 0), attempting auto-login...", "warn");
-        const retried = await tryAutoLoginIfNeeded(html, cookies, globalOptions, ctx, !!(appState || Cookie));
-        html = retried.html;
-        cookies = retried.cookies;
-        userID = retried.userID;
-        const htmlUserIDAfterLogin = getUIDFromHTML(html);
-        if (!isValidUID(htmlUserIDAfterLogin)) {
-          logger_default("After auto-login, HTML still does not contain valid USER_ID. Session may not be established.", "error");
-          try {
-            const refreshRes = await get2("https://www.facebook.com/", jar2, null, globalOptions).then(saveCookies(jar2));
-            const refreshedHtml = refreshRes && refreshRes.data ? refreshRes.data : "";
-            const refreshedHtmlUID = getUIDFromHTML(refreshedHtml);
-            if (isValidUID(refreshedHtmlUID)) {
-              html = refreshedHtml;
-              userID = refreshedHtmlUID;
-              logger_default(`After refresh, found valid USER_ID in HTML: ${userID}`, "info");
-            } else {
-              throw new Error("Login failed - HTML does not show valid USER_ID after auto-login and refresh");
-            }
-          } catch (refreshErr) {
-            throw new Error(`Login failed - Could not establish valid session. HTML USER_ID check failed: ${errMsg(refreshErr)}`);
-          }
-        } else {
-          userID = htmlUserIDAfterLogin;
-          logger_default(`After auto-login, using USER_ID from HTML: ${userID}`, "info");
-        }
+        throw new Error("Login failed - no valid userID found. AppState may be expired. Provide a valid appState or Cookie.");
       }
       if (html.includes("/checkpoint/block/?next")) {
         logger_default("Appstate die, vui l\xF2ng thay c\xE1i m\u1EDBi!", "error");
@@ -27382,14 +26720,8 @@ function loginHelper(appState, Cookie, email, password, globalOptions, callback)
           const info = JSON.parse(userDataMatch[1]);
           logger_default(`ACCOUNT: ${info.NAME} (${info.USER_ID})`, "info");
           if (!isValidUID(info.USER_ID)) {
-            logger_default("Facebook response shows invalid USER_ID (0 or empty), session is dead!", "warn");
-            const retried = await tryAutoLoginIfNeeded(html, cookies, globalOptions, ctx, !!(appState || Cookie));
-            html = retried.html;
-            cookies = retried.cookies;
-            userID = retried.userID;
-            if (!isValidUID(userID)) {
-              throw new Error("Auto-login failed - could not get valid userID");
-            }
+            logger_default("Facebook response shows invalid USER_ID (0 or empty), session is dead!", "error");
+            throw new Error("Login failed - Facebook response shows invalid USER_ID. AppState may be expired.");
           }
         } else if (userID) {
           logger_default(`ACCOUNT: ${userID}`, "info");
@@ -27434,22 +26766,6 @@ function loginHelper(appState, Cookie, email, password, globalOptions, callback)
         emitter,
         bypassAutomation: ctx.bypassAutomation
       });
-      ctxMain.performAutoLogin = async () => {
-        try {
-          const u = config.credentials?.email || email;
-          const p = config.credentials?.password || password;
-          const tf = config.credentials?.twofactor || null;
-          if (!u || !p) return false;
-          const r = await tokens(u, p, tf);
-          if (!(r && r.status && Array.isArray(r.cookies))) return false;
-          const pairs = r.cookies.map((c) => `${c.key || c.name}=${c.value}`);
-          setJarFromPairs(jar2, pairs, ".facebook.com");
-          await get2("https://www.facebook.com/", jar2, null, globalOptions).then(saveCookies(jar2));
-          return true;
-        } catch {
-          return false;
-        }
-      };
       const api = createApiFacade({
         globalOptions,
         jar: jar2,
@@ -27504,12 +26820,11 @@ function loginHelper(appState, Cookie, email, password, globalOptions, callback)
     callback(e);
   }
 }
-var import_node_events2, import_axios4, import_sequelize4, g, config, axiosBase, requestCore, get2, post2, jar2, makeDefaults2, authCore, REGION_MAP, uniqueIndexEnsured, exported, login_helper_impl_default;
+var import_node_events2, import_sequelize4, g, config, requestCore, get2, post2, jar2, makeDefaults2, authCore, REGION_MAP, uniqueIndexEnsured, exported, login_helper_impl_default;
 var init_login_helper_impl = __esm({
   "src/core/login-helper.impl.ts"() {
     "use strict";
     import_node_events2 = __toESM(require("events"));
-    import_axios4 = __toESM(require("axios"));
     init_attach_legacy_api();
     init_api_registry();
     init_models();
@@ -27527,18 +26842,14 @@ var init_login_helper_impl = __esm({
     import_sequelize4 = require("sequelize");
     g = globalThis;
     ({ config } = loadConfig());
-    axiosBase = import_axios4.default;
     requestCore = createRequestCore();
     ({ get: get2, post: post2, jar: jar2, makeDefaults: makeDefaults2 } = requestCore);
-    authCore = createAuthCore({ config, logger: logger_default, axiosBase });
+    authCore = createAuthCore({});
     REGION_MAP = authCore.REGION_MAP;
     uniqueIndexEnsured = false;
     exported = Object.assign(loginHelper, {
       loginHelper,
-      tokensViaAPI: tokensViaAPI2,
-      loginViaAPI,
-      tokens,
-      normalizeCookieHeaderString: normalizeCookieHeaderString2,
+      normalizeCookieHeaderString,
       setJarFromPairs
     });
     login_helper_impl_default = exported;
@@ -27767,7 +27078,271 @@ var init_browser = __esm({
   }
 });
 
+// src/index.ts
+var index_exports = {};
+__export(index_exports, {
+  MessengerBot: () => MessengerBot,
+  MessengerContext: () => MessengerContext,
+  attachClientFacade: () => attachClientFacade,
+  attachThreadInfoRealtimeSync: () => attachThreadInfoRealtimeSync,
+  checkForPackageUpdate: () => checkForPackageUpdate,
+  createAccountDomain: () => createAccountDomain,
+  createApiFacade: () => createApiFacade,
+  createAuthCore: () => createAuthCore,
+  createAutoDmBridge: () => createAutoDmBridge,
+  createBrowserDmSender: () => createBrowserDmSender,
+  createDefaultContext: () => createDefaultContext,
+  createDmBridge: () => createDmBridge,
+  createFcaClient: () => createFcaClient,
+  createFcaState: () => createFcaState,
+  createHttpDomain: () => createHttpDomain,
+  createMessagesDomain: () => createMessagesDomain,
+  createMessengerBot: () => createMessengerBot,
+  createRealtimeDomain: () => createRealtimeDomain,
+  createRequestHelper: () => createRequestHelper,
+  createSchedulerDomain: () => createSchedulerDomain,
+  createThreadsDomain: () => createThreadsDomain,
+  createUsersDomain: () => createUsersDomain,
+  default: () => login,
+  defaultConfig: () => defaultConfig,
+  defaultProfileDir: () => defaultProfileDir,
+  ensureBrowserForDms: () => ensureBrowserForDms,
+  ensureChromium: () => ensureChromium,
+  findChromiumBinary: () => findChromiumBinary,
+  hasUsableProfile: () => hasUsableProfile,
+  isCdpAlive: () => isCdpAlive,
+  listenMqtt: () => listenMqtt,
+  loadConfig: () => loadConfig,
+  login: () => login,
+  loginAsync: () => loginAsync,
+  loginLegacy: () => loginLegacy,
+  missingProfileError: () => missingProfileError,
+  normalizeCookieHeaderString: () => normalizeCookieHeaderString2,
+  parseBrowserSendOption: () => parseBrowserSendOption,
+  resolveConfig: () => resolveConfig,
+  resolveProfileDir: () => resolveProfileDir,
+  runConfiguredUpdateCheck: () => runConfiguredUpdateCheck,
+  setJarFromPairs: () => setJarFromPairs2,
+  waitForCdp: () => waitForCdp,
+  writeConfigTemplate: () => writeConfigTemplate
+});
+module.exports = __toCommonJS(index_exports);
+
 // src/core/auth.ts
+init_logger();
+var import_format19 = __toESM(require_format());
+init_state();
+init_request2();
+init_options2();
+init_config2();
+
+// src/core/update-check.ts
+var import_node_https = __toESM(require("https"));
+var import_node_child_process = require("child_process");
+init_package();
+function compareVersionPart(left, right) {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+    if (leftNumber === rightNumber) {
+      return 0;
+    }
+    return leftNumber > rightNumber ? 1 : -1;
+  }
+  return left.localeCompare(right);
+}
+function compareSemver(left, right) {
+  const leftParts = left.replace(/^v/i, "").split("-");
+  const rightParts = right.replace(/^v/i, "").split("-");
+  const leftCore = leftParts[0].split(".");
+  const rightCore = rightParts[0].split(".");
+  const length = Math.max(leftCore.length, rightCore.length);
+  for (let index = 0; index < length; index++) {
+    const result = compareVersionPart(leftCore[index] || "0", rightCore[index] || "0");
+    if (result !== 0) {
+      return result;
+    }
+  }
+  if (leftParts.length === 1 && rightParts.length === 1) {
+    return 0;
+  }
+  if (leftParts.length === 1) {
+    return 1;
+  }
+  if (rightParts.length === 1) {
+    return -1;
+  }
+  return compareVersionPart(leftParts.slice(1).join("-"), rightParts.slice(1).join("-"));
+}
+function normalizeRegistryUrl(value) {
+  return value.replace(/\/+$/, "");
+}
+function readUpdateConfig(input) {
+  if (input && "checkUpdate" in input) {
+    return input.checkUpdate;
+  }
+  const fallback = {
+    enabled: true,
+    install: false,
+    notifyIfCurrent: false,
+    packageName: package_default.name,
+    registryUrl: package_default.publishConfig?.registry || "https://registry.npmjs.org",
+    timeoutMs: 1e4
+  };
+  return { ...fallback, ...input || {} };
+}
+function fetchLatestVersion(config2) {
+  const url = `${normalizeRegistryUrl(config2.registryUrl)}/${encodeURIComponent(
+    config2.packageName
+  )}/latest`;
+  return new Promise((resolve, reject) => {
+    const request = import_node_https.default.get(
+      url,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": `${config2.packageName}-update-check`
+        },
+        timeout: config2.timeoutMs
+      },
+      (response) => {
+        let body = "";
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          try {
+            const payload = JSON.parse(body);
+            const version = payload?.version;
+            if (!version || typeof version !== "string") {
+              reject(new Error("Invalid version payload from registry"));
+              return;
+            }
+            resolve(version);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+    );
+    request.on("timeout", () => {
+      request.destroy(new Error("Update check timed out"));
+    });
+    request.on("error", reject);
+  });
+}
+function installLatestPackage(config2, latestVersion) {
+  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const dependency = `${config2.packageName}@${latestVersion}`;
+  return new Promise((resolve, reject) => {
+    (0, import_node_child_process.execFile)(npmCommand, ["i", dependency], { cwd: process.cwd() }, (error, _stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || error.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+var inflightCheck = null;
+async function checkForPackageUpdate(input, logger) {
+  const config2 = readUpdateConfig(input);
+  if (!config2.enabled) {
+    return null;
+  }
+  if (inflightCheck) {
+    return inflightCheck;
+  }
+  inflightCheck = (async () => {
+    const currentVersion = package_default.version;
+    const latestVersion = await fetchLatestVersion(config2);
+    const updateAvailable = compareSemver(latestVersion, currentVersion) > 0;
+    if (!updateAvailable) {
+      if (config2.notifyIfCurrent) {
+        logger?.(`You're already on the latest version (${currentVersion})`, "info");
+      }
+      return {
+        packageName: config2.packageName,
+        currentVersion,
+        latestVersion,
+        updateAvailable: false,
+        installed: false
+      };
+    }
+    logger?.(
+      `Update available for ${config2.packageName}: ${currentVersion} -> ${latestVersion}`,
+      "warn"
+    );
+    if (!config2.install) {
+      return {
+        packageName: config2.packageName,
+        currentVersion,
+        latestVersion,
+        updateAvailable: true,
+        installed: false
+      };
+    }
+    logger?.(`Installing ${config2.packageName}@${latestVersion}`, "info");
+    await installLatestPackage(config2, latestVersion);
+    logger?.(`Installed ${config2.packageName}@${latestVersion}. Restart to apply.`, "info");
+    return {
+      packageName: config2.packageName,
+      currentVersion,
+      latestVersion,
+      updateAvailable: true,
+      installed: true
+    };
+  })().finally(() => {
+    inflightCheck = null;
+  });
+  return inflightCheck;
+}
+async function runConfiguredUpdateCheck(config2, logger) {
+  try {
+    return await checkForPackageUpdate(config2, logger);
+  } catch (error) {
+    logger?.(
+      `Cannot check for updates: ${error && error.message ? error.message : String(error)}`,
+      "warn"
+    );
+    return null;
+  }
+}
+
+// src/core/auth.ts
+var import_login_helper = __toESM(require_login_helper());
+var { getType: getType14 } = import_format19.default;
+var g2 = global;
+var initialConfig = loadConfig().config;
+g2.fca = g2.fca || {};
+g2.fca.config = initialConfig;
+if (!g2.fca._errorHandlersInstalled) {
+  g2.fca._errorHandlersInstalled = true;
+  process.on("unhandledRejection", (reason) => {
+    try {
+      if (reason && typeof reason === "object") {
+        const errorCode = reason.code || reason.cause?.code;
+        const errorMessage = reason.message || String(reason);
+        if (errorMessage.includes("No Sequelize instance passed")) {
+          return;
+        }
+        if (errorCode === "UND_ERR_CONNECT_TIMEOUT" || errorCode === "ETIMEDOUT" || errorMessage.includes("Connect Timeout") || errorMessage.includes("fetch failed")) {
+          logger_default(`Network timeout error caught (non-fatal): ${errorMessage}`, "warn");
+          return;
+        }
+        if (errorCode === "ECONNREFUSED" || errorCode === "ENOTFOUND" || errorCode === "ECONNRESET" || errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND")) {
+          logger_default(`Network connection error caught (non-fatal): ${errorMessage}`, "warn");
+          return;
+        }
+      }
+      logger_default(
+        `Unhandled promise rejection (non-fatal): ${reason && reason.message ? reason.message : String(reason)}`,
+        "error"
+      );
+    } catch {
+    }
+  });
+}
 function appStateToCookieString(appState) {
   if (!Array.isArray(appState)) return "";
   return appState.map((c) => {
@@ -27783,6 +27358,19 @@ function appStateToFbid(appState) {
   const iUser = appState.find((c) => c?.key === "i_user" || c?.name === "i_user");
   return String(cUser && cUser.value || iUser && iUser.value || "");
 }
+var DEFAULT_LOGIN_OPTIONS = {
+  selfListen: false,
+  selfListenEvent: false,
+  listenEvents: false,
+  listenTyping: false,
+  updatePresence: false,
+  forceLogin: false,
+  autoMarkRead: false,
+  autoReconnect: true,
+  online: true,
+  emitReady: false,
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+};
 async function loginAsync(credentials, customOptions = {}) {
   const { config: config2 } = loadConfig();
   g2.fca = g2.fca || {};
@@ -27866,135 +27454,20 @@ function loginLegacy(credentials, options, callback) {
   }
   return p;
 }
-var import_format19, import_login_helper, getType14, g2, initialConfig, DEFAULT_LOGIN_OPTIONS, tokensViaAPI, loginViaAPI2, normalizeCookieHeaderString, setJarFromPairs2;
-var init_auth = __esm({
-  "src/core/auth.ts"() {
-    "use strict";
-    init_logger();
-    import_format19 = __toESM(require_format());
-    init_state();
-    init_request2();
-    init_options2();
-    init_config2();
-    init_update_check();
-    import_login_helper = __toESM(require_login_helper());
-    ({ getType: getType14 } = import_format19.default);
-    g2 = global;
-    initialConfig = loadConfig().config;
-    g2.fca = g2.fca || {};
-    g2.fca.config = initialConfig;
-    if (!g2.fca._errorHandlersInstalled) {
-      g2.fca._errorHandlersInstalled = true;
-      process.on("unhandledRejection", (reason) => {
-        try {
-          if (reason && typeof reason === "object") {
-            const errorCode = reason.code || reason.cause?.code;
-            const errorMessage = reason.message || String(reason);
-            if (errorMessage.includes("No Sequelize instance passed")) {
-              return;
-            }
-            if (errorCode === "UND_ERR_CONNECT_TIMEOUT" || errorCode === "ETIMEDOUT" || errorMessage.includes("Connect Timeout") || errorMessage.includes("fetch failed")) {
-              logger_default(`Network timeout error caught (non-fatal): ${errorMessage}`, "warn");
-              return;
-            }
-            if (errorCode === "ECONNREFUSED" || errorCode === "ENOTFOUND" || errorCode === "ECONNRESET" || errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND")) {
-              logger_default(`Network connection error caught (non-fatal): ${errorMessage}`, "warn");
-              return;
-            }
-          }
-          logger_default(
-            `Unhandled promise rejection (non-fatal): ${reason && reason.message ? reason.message : String(reason)}`,
-            "error"
-          );
-        } catch {
-        }
-      });
-    }
-    DEFAULT_LOGIN_OPTIONS = {
-      selfListen: false,
-      selfListenEvent: false,
-      listenEvents: false,
-      listenTyping: false,
-      updatePresence: false,
-      forceLogin: false,
-      autoMarkRead: false,
-      autoReconnect: true,
-      online: true,
-      emitReady: false,
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-    };
-    tokensViaAPI = (email, password, twoFactor, apiBaseUrl) => import_login_helper.default.tokensViaAPI(email, password, twoFactor, apiBaseUrl);
-    loginViaAPI2 = (email, password, twoFactor, apiBaseUrl, apiKey) => import_login_helper.default.loginViaAPI(email, password, twoFactor, apiBaseUrl, apiKey);
-    normalizeCookieHeaderString = (cookieHeader) => import_login_helper.default.normalizeCookieHeaderString(cookieHeader);
-    setJarFromPairs2 = (jar3, pairs, domain) => import_login_helper.default.setJarFromPairs(jar3, pairs, domain);
-  }
-});
+var normalizeCookieHeaderString2 = (cookieHeader) => import_login_helper.default.normalizeCookieHeaderString(cookieHeader);
+var setJarFromPairs2 = (jar3, pairs, domain) => import_login_helper.default.setJarFromPairs(jar3, pairs, domain);
 
 // src/index.ts
-var index_exports = {};
-__export(index_exports, {
-  MessengerBot: () => MessengerBot,
-  MessengerContext: () => MessengerContext,
-  attachClientFacade: () => attachClientFacade,
-  attachThreadInfoRealtimeSync: () => attachThreadInfoRealtimeSync,
-  checkForPackageUpdate: () => checkForPackageUpdate,
-  createAccountDomain: () => createAccountDomain,
-  createApiFacade: () => createApiFacade,
-  createAuthCore: () => createAuthCore,
-  createAutoDmBridge: () => createAutoDmBridge,
-  createBrowserDmSender: () => createBrowserDmSender,
-  createDefaultContext: () => createDefaultContext,
-  createDmBridge: () => createDmBridge,
-  createFcaClient: () => createFcaClient,
-  createFcaState: () => createFcaState,
-  createHttpDomain: () => createHttpDomain,
-  createMessagesDomain: () => createMessagesDomain,
-  createMessengerBot: () => createMessengerBot,
-  createRealtimeDomain: () => createRealtimeDomain,
-  createRequestHelper: () => createRequestHelper,
-  createSchedulerDomain: () => createSchedulerDomain,
-  createThreadsDomain: () => createThreadsDomain,
-  createUsersDomain: () => createUsersDomain,
-  default: () => login,
-  defaultConfig: () => defaultConfig,
-  defaultProfileDir: () => defaultProfileDir,
-  ensureBrowserForDms: () => ensureBrowserForDms,
-  ensureChromium: () => ensureChromium,
-  findChromiumBinary: () => findChromiumBinary,
-  hasUsableProfile: () => hasUsableProfile,
-  isCdpAlive: () => isCdpAlive,
-  listenMqtt: () => listenMqtt,
-  loadConfig: () => loadConfig,
-  login: () => login,
-  loginAsync: () => loginAsync,
-  loginLegacy: () => loginLegacy,
-  loginViaAPI: () => loginViaAPI2,
-  missingProfileError: () => missingProfileError,
-  normalizeCookieHeaderString: () => normalizeCookieHeaderString,
-  parseBrowserSendOption: () => parseBrowserSendOption,
-  resolveConfig: () => resolveConfig,
-  resolveProfileDir: () => resolveProfileDir,
-  runConfiguredUpdateCheck: () => runConfiguredUpdateCheck,
-  setJarFromPairs: () => setJarFromPairs2,
-  tokensViaAPI: () => tokensViaAPI,
-  waitForCdp: () => waitForCdp,
-  writeConfigTemplate: () => writeConfigTemplate
-});
-module.exports = __toCommonJS(index_exports);
-init_auth();
-init_auth();
 init_state();
 init_request2();
 init_mqtt();
 init_auth_helpers();
 init_config2();
 init_thread_info_realtime_sync();
-init_update_check();
 init_create_client();
 
 // src/app/messenger-bot.ts
 var import_node_events3 = require("events");
-init_auth();
 init_create_client();
 
 // src/app/messenger-context.ts
@@ -29061,7 +28534,6 @@ init_scheduler();
   login,
   loginAsync,
   loginLegacy,
-  loginViaAPI,
   missingProfileError,
   normalizeCookieHeaderString,
   parseBrowserSendOption,
@@ -29069,7 +28541,6 @@ init_scheduler();
   resolveProfileDir,
   runConfiguredUpdateCheck,
   setJarFromPairs,
-  tokensViaAPI,
   waitForCdp,
   writeConfigTemplate
 });
