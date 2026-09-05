@@ -26650,6 +26650,25 @@ function loginHelper(appState, Cookie, email, password, globalOptions, callback)
         userID = userIDFromAppState;
       }
       if (!isValidUID(userID)) {
+        logger_default("No valid userID found, attempting session refresh...", "warn");
+        try {
+          const refreshRes = await get2("https://m.facebook.com/", jar2, null, globalOptions).then(saveCookies(jar2));
+          const refreshHtml = refreshRes && refreshRes.data ? refreshRes.data : "";
+          const refreshCookies = await Promise.resolve(jar2.getCookies("https://www.facebook.com"));
+          userID = getUIDFromCookies(refreshCookies);
+          if (!isValidUID(userID)) {
+            userID = getUIDFromHTML(refreshHtml);
+          }
+          if (isValidUID(userID)) {
+            html = refreshHtml;
+            cookies = refreshCookies;
+            logger_default(`Session refresh successful, found USER_ID: ${userID}`, "info");
+          }
+        } catch (refreshErr) {
+          logger_default(`Session refresh failed: ${errMsg(refreshErr)}`, "warn");
+        }
+      }
+      if (!isValidUID(userID)) {
         throw new Error("Login failed - no valid userID found. AppState may be expired. Provide a valid appState or Cookie.");
       }
       if (html.includes("/checkpoint/block/?next")) {

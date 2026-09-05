@@ -528,7 +528,29 @@ function loginHelper(
         if (!isValidUID(userID) && userIDFromAppState && isValidUID(userIDFromAppState)) {
           userID = userIDFromAppState;
         }
-        // Trigger error if userID is invalid (missing or "0")
+        // If still not valid, try refreshing the session
+        if (!isValidUID(userID)) {
+          logger("No valid userID found, attempting session refresh...", "warn");
+          try {
+            // Try refreshing with m.facebook.com first
+            const refreshRes = await get("https://m.facebook.com/", jar, null, globalOptions).then(saveCookies(jar));
+            const refreshHtml = refreshRes && refreshRes.data ? refreshRes.data : "";
+            const refreshCookies = await Promise.resolve(jar.getCookies("https://www.facebook.com"));
+            
+            userID = getUIDFromCookies(refreshCookies);
+            if (!isValidUID(userID)) {
+              userID = getUIDFromHTML(refreshHtml);
+            }
+            if (isValidUID(userID)) {
+              html = refreshHtml;
+              cookies = refreshCookies;
+              logger(`Session refresh successful, found USER_ID: ${userID}`, "info");
+            }
+          } catch (refreshErr) {
+            logger(`Session refresh failed: ${errMsg(refreshErr)}`, "warn");
+          }
+        }
+        // Final check
         if (!isValidUID(userID)) {
           throw new Error("Login failed - no valid userID found. AppState may be expired. Provide a valid appState or Cookie.");
         }
