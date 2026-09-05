@@ -1,0 +1,13 @@
+# Never bake account sessions into the image.
+appstate.json
+chrome-cdp-profile/
+bot-profile/
+session-archive.tar.gz
+*.log
+
+# Build artifacts / tooling
+node_modules/
+dist/
+.git/
+.github/
+WEBSITES/
